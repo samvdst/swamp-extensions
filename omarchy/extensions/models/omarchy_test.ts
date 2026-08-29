@@ -20,6 +20,7 @@ const machine: Record<string, RunResult> = {
   "omarchy font current": ok("JetBrainsMono Nerd Font"),
   "omarchy update available": fail("Omarchy is up to date"),
   "pacman -Qq": ok("acl\nbash\nhyprland"),
+  "sudo -n true": ok(),
 };
 
 function fileText(content: string | Uint8Array): string {
@@ -123,6 +124,29 @@ Deno.test("update failure still persists the log, then throws", async () => {
     );
     assertEquals(getWrittenResources().length, 0);
   } finally {
+    stub.restore();
+  }
+});
+
+Deno.test("update falls back to a terminal when sudo needs interactive auth", async () => {
+  const stub = stubRun({
+    "sudo -n true": fail("sudo: a password is required", 1),
+  });
+  const originalTerminal = _internals.updateInTerminal;
+  _internals.updateInTerminal = () =>
+    Promise.resolve(ok("interactive update finished"));
+  try {
+    const { context, getWrittenFiles, getWrittenResources } =
+      createModelTestContext();
+    await model.methods.update.execute({}, context);
+
+    assert(!stub.calls.includes("omarchy update -y"));
+    const files = getWrittenFiles();
+    assertEquals(files.length, 1);
+    assertStringIncludes(fileText(files[0].content), "interactive update");
+    assertEquals(getWrittenResources().length, 2);
+  } finally {
+    _internals.updateInTerminal = originalTerminal;
     stub.restore();
   }
 });

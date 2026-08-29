@@ -63,8 +63,50 @@ async function run(bin: string, args: string[]): Promise<RunResult> {
   }
 }
 
+// Runs the update in a floating terminal on the desktop — the same idiom
+// Omarchy's own update button uses — so sudo can do its normal interactive
+// auth (fingerprint, then password). The launcher detaches, so completion is
+// signalled through a marker file; the log comes from omarchy-update's own
+// `script` capture at /tmp/omarchy-update.log.
+async function updateInTerminal(): Promise<RunResult> {
+  const exitFile = `${await Deno.makeTempDir({
+    prefix: "omarchy-model-update-",
+  })}/exit`;
+  const launch = await _internals.run("setsid", [
+    "uwsm-app",
+    "--",
+    "xdg-terminal-exec",
+    "--app-id=org.omarchy.terminal",
+    "--title=Omarchy Update",
+    "-e",
+    "bash",
+    "-c",
+    `omarchy update -y; echo $? > ${shellQuote(exitFile)}`,
+  ]);
+  if (!launch.ok) {
+    throw new Error(
+      `could not open a terminal for interactive sudo auth (exit ${launch.code}): ${launch.output}`,
+    );
+  }
+  // ponytail: 2s poll with a 45min cap; plenty for a system update
+  const deadline = Date.now() + 45 * 60 * 1000;
+  while (Date.now() < deadline) {
+    const marker = await Deno.readTextFile(exitFile).catch(() => null);
+    if (marker !== null) {
+      const code = parseInt(marker.trim(), 10);
+      const output = await Deno.readTextFile("/tmp/omarchy-update.log")
+        .catch(() => "");
+      return { ok: code === 0, code, output: output.trim() };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+  throw new Error(
+    "timed out after 45min waiting for the interactive update terminal — was it closed without finishing?",
+  );
+}
+
 /** Seam for unit tests to stub command execution. */
-export const _internals = { run };
+export const _internals = { run, updateInTerminal };
 
 async function omarchy(...args: string[]): Promise<string> {
   const result = await _internals.run("omarchy", args);
@@ -138,7 +180,7 @@ async function writeSnapshot(
 /** Model definition for managing an Omarchy Linux machine. */
 export const model = {
   type: "@samvdst/omarchy/machine",
-  version: "2026.08.29.1",
+  version: "2026.08.29.3",
   globalArguments: GlobalArgsSchema,
   resources: {
     "state": {
@@ -213,7 +255,19 @@ export const model = {
       ) => {
         const before = await omarchy("version");
         context.logger.info("Updating omarchy from {before}", { before });
-        const result = await _internals.run("omarchy", ["update", "-y"]);
+        // omarchy update runs sudo internally; headless it would hang for
+        // minutes on auth prompts nobody can answer. When credentials aren't
+        // cached, hand the update to a visible floating terminal instead so
+        // the user authenticates with fingerprint or password.
+        const sudo = await _internals.run("sudo", ["-n", "true"]);
+        if (!sudo.ok) {
+          context.logger.info(
+            "sudo needs interactive auth - opening a floating terminal, authenticate there",
+          );
+        }
+        const result = sudo.ok
+          ? await _internals.run("omarchy", ["update", "-y"])
+          : await _internals.updateInTerminal();
         const logHandle = await context.createFileWriter(
           "updateLog",
           "updateLog",
