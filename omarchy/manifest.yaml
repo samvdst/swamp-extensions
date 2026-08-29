@@ -1,0 +1,16 @@
+manifestVersion: 1
+name: '@samvdst/omarchy'
+version: 2026.08.29.1
+description: Manage Omarchy Linux machines - versioned state snapshots, updates, themes, packages, and toggles.
+repository: https://github.com/samvdst/swamp-extensions
+models:
+  - omarchy.ts
+workflows: []
+additionalFiles:
+  - README.md
+  - LICENSE.md
+platforms:
+  - linux-x86_64
+labels:
+  - omarchy
+  - linux
