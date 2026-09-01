@@ -1,11 +1,13 @@
 manifestVersion: 1
 name: '@samvdst/omarchy'
-version: 2026.08.29.3
-description: Manage Omarchy Linux machines - versioned state snapshots, updates, themes, packages, and toggles.
+version: 2026.08.30.1
+description: Manage Omarchy Linux machines, including tracked direct-download packages.
 repository: https://github.com/samvdst/swamp-extensions
 models:
   - omarchy.ts
-workflows: []
+  - direct_package.ts
+workflows:
+  - workflow-direct-packages.yaml
 additionalFiles:
   - README.md
   - LICENSE.md

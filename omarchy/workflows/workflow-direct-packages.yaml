@@ -1,0 +1,30 @@
+id: edd27ead-065d-440b-92b9-a4f0056fe64b
+name: '@samvdst/omarchy/direct-packages'
+description: Run one lifecycle action across direct-download package models
+version: 1
+inputs:
+  properties:
+    action:
+      type: string
+      enum: [sync, install, update, replace, delete]
+    packages:
+      type: array
+      minItems: 1
+      items:
+        type: string
+  required: [action, packages]
+tags:
+  omarchy: direct-packages
+jobs:
+  - name: packages
+    description: Process packages serially because pacman has one database lock
+    steps:
+      - name: ${{ inputs.action }}-${{ self.package }}
+        forEach:
+          item: package
+          in: ${{ inputs.packages }}
+        concurrency: 1
+        task:
+          type: model_method
+          modelIdOrName: ${{ self.package }}
+          methodName: ${{ inputs.action }}
